@@ -1,10 +1,15 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import base64
+from PIL import Image, ImageOps
+from io import BytesIO
 from dotenv import load_dotenv
 load_dotenv()
 from openai import OpenAI
 client = OpenAI()
+
+
+MAX_EDGE = 1280
 
 app = Flask(__name__)
 CORS(app)
@@ -13,8 +18,17 @@ CORS(app)
 def upload():
     file = request.files['image']
     print(file.filename)
-    data_b64 = base64.b64encode(file.read()).decode("ascii")
-    data_url = f"data:{file.mimetype};base64,{data_b64}"
+    img = Image.open(file.stream)
+    img = ImageOps.exif_transpose(img)
+    img = img.convert("RGB")
+    img.thumbnail((MAX_EDGE, MAX_EDGE), Image.Resampling.LANCZOS)
+    buf = BytesIO()
+    img.save(buf, format="JPEG", quality=80, optimize=True, progressive=True)
+    buf.seek(0)
+    jpeg_bytes = buf.read()
+    mime = "image/jpeg"
+    data_b64 = base64.b64encode(jpeg_bytes).decode("ascii")
+    data_url = f"data:{mime};base64,{data_b64}"
     response = client.responses.create(
         model="gpt-4o-mini",
         input=[
